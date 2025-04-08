@@ -1,0 +1,118 @@
+'''
+Name: Dylan Williams
+Date: 3/24/2024
+Instructor: Mark Prather
+Class: CIT 244
+'''
+
+import wx
+import sqlite3
+import requests
+import datetime
+
+def get_current_price(symbol):
+    url = f'https://finnhub.io/api/v1/quote?symbol={symbol}&token=co0osk9r01qhaf74q0f0co0osk9r01qhaf74q0fg'
+    response = requests.get(url)
+    data = response.json()
+    return data.get('c', 0)  # Return current price or 0 if not available
+
+class MyFrame(wx.Frame):
+    def __init__(self):
+        super().__init__(parent=None, title='Tech Stocks')
+        self.panel = wx.Panel(self)
+        self.create_widgets()
+
+    def create_widgets(self):
+        self.lbl_current_time = wx.StaticText(self.panel, label="Current Time:")
+        self.lbl_time = wx.StaticText(self.panel, label="")
+        self.update_time()
+
+        # Sizers
+        time_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        time_sizer.Add(self.lbl_current_time, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
+        time_sizer.Add(self.lbl_time, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
+
+        # Labels
+        self.lbl_net_gain_loss = wx.StaticText(self.panel, label="Net Gain/Loss: $0.00")
+
+        # List control
+        self.list_ctrl = wx.ListCtrl(self.panel, style=wx.LC_REPORT)
+        self.list_ctrl.InsertColumn(0, "Company")
+        self.list_ctrl.InsertColumn(1, "Symbol")
+        self.list_ctrl.InsertColumn(2, "Purchase Price")
+        self.list_ctrl.InsertColumn(3, "Current Price")
+        self.list_ctrl.InsertColumn(4, "Shares")
+        self.list_ctrl.InsertColumn(5, "Gain/Loss")
+
+        # Buttons
+        self.btn_display = wx.Button(self.panel, label="Display Data")
+        self.btn_close = wx.Button(self.panel, label="Close")
+
+        # Main sizer
+        main_sizer = wx.BoxSizer(wx.VERTICAL)
+        main_sizer.Add(time_sizer, 0, wx.ALL | wx.EXPAND, 5)
+        main_sizer.Add(self.lbl_net_gain_loss, 0, wx.ALL, 5)
+        main_sizer.Add(self.list_ctrl, 1, wx.ALL | wx.EXPAND, 5)
+        main_sizer.Add(self.btn_display, 0, wx.ALL, 5)
+        main_sizer.Add(self.btn_close, 0, wx.ALL, 5)
+        self.panel.SetSizer(main_sizer)
+
+        # Button events
+        self.btn_display.Bind(wx.EVT_BUTTON, self.OnDisplayData)
+        self.btn_close.Bind(wx.EVT_BUTTON, self.OnClose)
+
+    def update_time(self):
+        now = datetime.datetime.now()
+        formatted_time = now.strftime("%A %B %d, %Y : %H:%M")
+        self.lbl_time.SetLabel(formatted_time)
+
+    def OnDisplayData(self, event):
+        conn = sqlite3.connect('tech_stocks.db')
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM dow_stocks")
+        stocks = cursor.fetchall()
+        conn.close()
+
+        # Clear list control
+        self.list_ctrl.DeleteAllItems()
+
+        # Calculate net gain/loss
+        net_gain_loss = 0
+
+        # Populate list control
+        for stock in stocks:
+            symbol = stock[3]
+            purchase_price = round(float(stock[4]), 2)
+            shares = stock[5]
+
+            # Get current price
+            current_price = get_current_price(symbol)
+            current_price = round(current_price, 2)
+
+            # Calculate gain/loss
+            gain_loss = round(shares * (current_price - purchase_price), 2)
+
+            # Insert data into list control
+            index = self.list_ctrl.InsertItem(self.list_ctrl.GetItemCount(), "")
+            self.list_ctrl.SetItem(index, 0, stock[1])
+            self.list_ctrl.SetItem(index, 1, symbol)
+            self.list_ctrl.SetItem(index, 2, f"${purchase_price}")
+            self.list_ctrl.SetItem(index, 3, f"${current_price}")
+            self.list_ctrl.SetItem(index, 4, str(shares))
+            self.list_ctrl.SetItem(index, 5, f"${gain_loss}")
+
+            # Update net gain/loss
+            net_gain_loss += gain_loss
+
+        # Update labels
+        self.lbl_net_gain_loss.SetLabel(f"Net Gain/Loss: ${net_gain_loss:.2f}")
+
+    def OnClose(self, event):
+        self.Close()
+
+if __name__ == "__main__":
+    app = wx.App()
+    frame = MyFrame()
+    frame.SetSize(600, 400)
+    frame.Show()
+    app.MainLoop()
